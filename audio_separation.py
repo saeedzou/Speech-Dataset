@@ -10,11 +10,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Literal, Optional
 from dataclasses import dataclass
 from pydub import AudioSegment
-from utils import *
 
 @dataclass
 class ProcessingConfig:
-    chunk_duration_minutes: float = 0.125
+    chunk_duration_minutes: float = 10
     max_workers: int = 3
     output_bitrate: str = "128k"
     log_level: str = "INFO"
@@ -177,7 +176,6 @@ class AudioProcessor:
     def remove_background_music(
         self,
         input_file_path: str,
-        output_dir_path: str,
         mode: Literal['spleeter', 'demucs'] = 'demucs'
     ) -> str:
         """Remove background music from audio file using specified method."""
@@ -187,7 +185,7 @@ class AudioProcessor:
         assert mode in ['spleeter', 'demucs'], "Mode must be either 'spleeter' or 'demucs'"
         
         input_path = Path(input_file_path)
-        output_path = Path(output_dir_path) / f"{input_path.stem}.wav"
+        output_path = input_path.with_stem(f"{input_path.stem}_vocals")  # Save with _vocals extension in the same directory
         
         # Check if output already exists
         if output_path.exists():
@@ -327,7 +325,7 @@ def parse_args():
 
     return parser.parse_args()
 
-def process_files(processor: AudioProcessor, input_path: str, output_dir: str, mode: str) -> List[str]:
+def process_files(processor: AudioProcessor, input_path: str, mode: str) -> List[str]:
     """Process single file or directory of files."""
     input_path = Path(input_path)
     processed_files = []
@@ -339,20 +337,18 @@ def process_files(processor: AudioProcessor, input_path: str, output_dir: str, m
         
         output_path = processor.remove_background_music(
             str(input_path),
-            output_dir,
             mode
         )
         processed_files.append(output_path)
     
     elif input_path.is_dir():
-        wav_files = list(input_path.glob('*.wav'))
+        wav_files = list(input_path.rglob('*.wav'))
         processor.logger.info(f"Found {len(wav_files)} WAV files in directory")
         
         for wav_file in wav_files:
             try:
                 output_path = processor.remove_background_music(
                     str(wav_file),
-                    output_dir,
                     mode
                 )
                 processed_files.append(output_path)
