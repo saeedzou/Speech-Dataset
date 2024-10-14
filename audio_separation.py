@@ -273,13 +273,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        '-o', '--output',
-        type=str,
-        default='./output',
-        help='Output directory path'
-    )
-
-    parser.add_argument(
         '-m', '--mode',
         type=str,
         choices=['spleeter', 'demucs'],
@@ -290,14 +283,14 @@ def parse_args():
     parser.add_argument(
         '--chunk-duration',
         type=float,
-        default=10,
+        default=5,
         help='Duration of each chunk in minutes'
     )
 
     parser.add_argument(
         '--workers',
         type=int,
-        default=3,
+        default=1,
         help='Number of worker threads for parallel processing'
     )
 
@@ -365,10 +358,6 @@ def main():
     """Main entry point with command line argument handling."""
     args = parse_args()
 
-    # Create output directory if it doesn't exist
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     # Configure processor
     config = ProcessingConfig(
         chunk_duration_minutes=args.chunk_duration,
@@ -386,7 +375,6 @@ def main():
         processed_files = process_files(
             processor,
             args.input,
-            args.output,
             args.mode
         )
 
