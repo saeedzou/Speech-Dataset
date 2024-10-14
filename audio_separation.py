@@ -6,7 +6,6 @@ import subprocess
 import logging
 import time
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Literal, Optional
 from dataclasses import dataclass
 from pydub import AudioSegment
@@ -14,7 +13,6 @@ from pydub import AudioSegment
 @dataclass
 class ProcessingConfig:
     chunk_duration_minutes: float = 10
-    max_workers: int = 3
     output_bitrate: str = "128k"
     log_level: str = "INFO"
     log_file: Optional[str] = "audio_processing.log"
@@ -75,7 +73,11 @@ class AudioProcessor:
             if mode == 'spleeter':
                 processed = self._spleeter_process_chunk(chunk_path, f'{input_file_name}_temp_chunk_{idx}')
             else:
-                processed = self._demucs_process_chunk(chunk_path, f'{input_file_name}_temp_chunk_{idx}')
+                _ = self._demucs_process_chunk(chunk_path, f'{input_file_name}_temp_chunk_{idx}')
+                spleeter_input_path = f'demucs/temp_output/htdemucs_ft/{input_file_name}_temp_chunk_{idx}/vocals.wav'
+                processed = self._spleeter_process_chunk(spleeter_input_path, 'vocals')
+
+                
             
             processing_time = time.time() - start_time
             self.logger.info(f"Chunk {idx} processed successfully in {processing_time:.2f} seconds")
@@ -163,7 +165,7 @@ class AudioProcessor:
                 if not os.path.exists(output_path):
                     raise FileNotFoundError(f"Output file not found: {output_path}")
 
-                return AudioSegment.from_file(output_path)
+                return AudioSegment.from_file(output_path).set_channels(1)
                 
             except (subprocess.CalledProcessError, FileNotFoundError) as e:
                 self.logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
@@ -213,29 +215,19 @@ class AudioProcessor:
         self.logger.info(f"Audio split into {total_chunks} chunks")
 
         try:
-            # Process chunks in parallel
-            processed_chunks = [None] * total_chunks
-            with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
-                future_to_chunk = {
-                    executor.submit(self._process_chunk, chunk_info): chunk_info[2]
-                    for chunk_info in chunks_info
-                }
-                
-                for future in as_completed(future_to_chunk):
-                    chunk_idx = future_to_chunk[future]
-                    try:
-                        idx, processed_chunk = future.result()
-                        processed_chunks[idx] = processed_chunk
-                        self.logger.info(f"Chunk {idx + 1}/{total_chunks} completed")
-                    except Exception as e:
-                        self.logger.error(f"Chunk {chunk_idx} failed: {str(e)}")
-                        raise
+            # Process chunks sequentially
+            processed_chunks = []
+            for chunk_info in chunks_info:
+                idx, processed_chunk = self._process_chunk(chunk_info)
+                processed_chunks.append(processed_chunk)
+                self.logger.info(f"Chunk {idx + 1}/{total_chunks} completed")
 
             # Concatenate and export
             self.logger.info("Concatenating processed chunks")
             final_audio = sum(processed_chunks[1:], processed_chunks[0])
             
             self.logger.info(f"Exporting final audio to {output_path}")
+            final_audio.set_channels(1)
             final_audio.export(output_path, format='wav')
             
             total_time = time.time() - start_time
@@ -254,10 +246,15 @@ class AudioProcessor:
         """Clean up all temporary files and directories."""
         self.logger.debug("Cleaning up temporary files")
         temp_output = Path(f'{mode}/temp_output')
+        
         if temp_output.exists():
             shutil.rmtree(temp_output)
-        self.logger.debug("Cleanup completed")
-
+        
+        temp_files = Path(mode).glob('*.wav')
+        for temp_file in temp_files:
+            temp_file.unlink(missing_ok=True)
+        
+        self.logger.debug("Temporary files cleaned up")
 
 def parse_args():
     """Parse command line arguments."""
@@ -285,13 +282,6 @@ def parse_args():
         type=float,
         default=5,
         help='Duration of each chunk in minutes'
-    )
-
-    parser.add_argument(
-        '--workers',
-        type=int,
-        default=1,
-        help='Number of worker threads for parallel processing'
     )
 
     parser.add_argument(
@@ -361,7 +351,6 @@ def main():
     # Configure processor
     config = ProcessingConfig(
         chunk_duration_minutes=args.chunk_duration,
-        max_workers=args.workers,
         output_bitrate=args.bitrate,
         log_level=args.log_level,
         log_file=None if args.log_file.lower() == 'none' else args.log_file
