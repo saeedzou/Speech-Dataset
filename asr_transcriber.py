@@ -4,10 +4,8 @@ import torch
 import torchaudio
 import librosa
 import numpy as np
-import json
 import uuid
-import wave
-from pydub import AudioSegment
+import subprocess
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ASR transcription tool.")
@@ -48,28 +46,25 @@ def hezar_transcript(audio_file_path):
 
 # Vosk transcription
 def vosk_transcript(audio_file_path):
-    from vosk import Model as VoskModel, KaldiRecognizer, SetLogLevel
-    import pyaudioconvert as pac
+    """Transcribe audio using the Vosk CLI command."""
+    output_txt_path = f"{uuid.uuid4()}.txt"  # Temporary output file
+    try:
+        # Run the Vosk CLI command
+        subprocess.run(
+            ["vosk", "-l", "fa", "-i", audio_file_path, "-o", output_txt_path],
+            check=True,
+        )
 
-    SetLogLevel(0)
-    model = VoskModel(model_name="vosk-model-fa-0.5")
-    temp_output_file_name = f"{uuid.uuid4()}.{audio_file_path.split('.')[-1]}"
-    AudioSegment.from_mp3(audio_file_path).export(temp_output_file_name, format="wav")
-    pac.convert_wav_to_16bit_mono(temp_output_file_name, temp_output_file_name)
+        # Read the transcription from the output file
+        with open(output_txt_path, "r", encoding="utf-8") as f:
+            transcript = f.read().strip()
 
-    wf = wave.open(temp_output_file_name, "rb")
-    rec = KaldiRecognizer(model, wf.getframerate())
-    rec.SetWords(True)
-    rec.SetPartialWords(True)
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(output_txt_path):
+            os.remove(output_txt_path)
 
-    while True:
-        data = wf.readframes(4000)
-        if len(data) == 0:
-            break
-        rec.AcceptWaveform(data) if rec.AcceptWaveform(data) else rec.PartialResult()
-
-    os.remove(temp_output_file_name)
-    return json.loads(rec.FinalResult())['text']
+    return transcript
 
 # Whisper transcription
 def whisper_transcript(audio_file_path):
@@ -78,34 +73,55 @@ def whisper_transcript(audio_file_path):
     model = WhisperASR.from_hparams(source="speechbrain/asr-whisper-large-v2-commonvoice-fa", run_opts={"device": "cuda:0"})
     return model.transcribe_file(audio_file_path)
 
-def main():
-    args = parse_args()
-    audio_file_path = args.audio_file
-
-    if args.model == "wav2vec_v3":
+def transcribe_file(audio_file, model_name):
+    """Transcribe a single audio file based on the selected model."""
+    if model_name == "wav2vec_v3":
         from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-
         processor = Wav2Vec2Processor.from_pretrained("m3hrdadfi/wav2vec2-large-xlsr-persian-v3")
         model = Wav2Vec2ForCTC.from_pretrained("m3hrdadfi/wav2vec2-large-xlsr-persian-v3").to("cuda:0" if torch.cuda.is_available() else "cpu")
-        transcript = wav2vec_transcript(audio_file_path, processor, model)
+        return wav2vec_transcript(audio_file, processor, model)
 
-    elif args.model == "wav2vec_fa":
+    elif model_name == "wav2vec_fa":
         from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-
         processor = Wav2Vec2Processor.from_pretrained("masoudmzb/wav2vec2-xlsr-multilingual-53-fa")
         model = Wav2Vec2ForCTC.from_pretrained("masoudmzb/wav2vec2-xlsr-multilingual-53-fa").to("cuda:0" if torch.cuda.is_available() else "cpu")
-        transcript = wav2vec_transcript(audio_file_path, processor, model)
+        return wav2vec_transcript(audio_file, processor, model)
 
-    elif args.model == "hezar":
-        transcript = hezar_transcript(audio_file_path)
+    elif model_name == "hezar":
+        return hezar_transcript(audio_file)
 
-    elif args.model == "vosk":
-        transcript = vosk_transcript(audio_file_path)
+    elif model_name == "vosk":
+        return vosk_transcript(audio_file)
 
-    elif args.model == "whisper":
-        transcript = whisper_transcript(audio_file_path)
+    elif model_name == "whisper":
+        return whisper_transcript(audio_file)
 
-    print(f"Transcript:\n{transcript}")
+def transcribe_directory(directory, model_name):
+    """Transcribe all WAV files in the directory and its subdirectories."""
+    for subdir, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(".wav"):
+                audio_path = os.path.join(subdir, file)
+                print(f"Transcribing: {audio_path}")
+                transcript = transcribe_file(audio_path, model_name)
+                print(f"Transcript:\n{transcript}\n")
+
+
+def main():
+    args = parse_args()
+    input_path = args.input_path
+
+    if os.path.isfile(input_path) and input_path.endswith(".wav"):
+        print(f"Transcribing file: {input_path}")
+        transcript = transcribe_file(input_path, args.model)
+        print(f"Transcript:\n{transcript}")
+
+    elif os.path.isdir(input_path):
+        print(f"Transcribing all WAV files in directory: {input_path}")
+        transcribe_directory(input_path, args.model)
+
+    else:
+        print(f"Invalid input: {input_path}. Please provide a valid WAV file or directory.")
 
 if __name__ == "__main__":
     main()
