@@ -32,17 +32,29 @@ def convert_directory_mp3_to_wav(root_dir, target_sample_rate=44100):
                 
                 print(f"Converted file saved at: {output_wav_path}")
 
+def process_input(path, target_sample_rate=44100):
+    """Determine if the input is a file or directory and process accordingly."""
+    if os.path.isfile(path) and path.endswith(".mp3"):
+        print(f"Processing file: {path}")
+        output_path = convert_mp3_to_mono_wav(path, target_sample_rate)
+        print(f"Converted file saved at: {output_path}")
+    elif os.path.isdir(path):
+        print(f"Processing directory: {path}")
+        convert_directory_mp3_to_wav(path, target_sample_rate)
+    else:
+        print(f"Invalid input: {path}. Please provide a valid MP3 file or directory.")
+
 
 if __name__ == "__main__":
     # Argument parsing
     parser = argparse.ArgumentParser(description="Convert MP3 files to mono WAV with a specified sample rate.")
-    
-    # Arguments for root directory and sample rate
-    parser.add_argument("root_dir", type=str, help="The root directory containing MP3 files to convert.")
-    parser.add_argument("--sample_rate", type=int, default=44100, help="The target sample rate for the WAV files. Default is 16000 Hz.")
-    
+
+    # Arguments for input path and sample rate
+    parser.add_argument("input_path", type=str, help="The MP3 file or directory to convert.")
+    parser.add_argument("--sample_rate", type=int, default=44100, help="The target sample rate for WAV files. Default is 44100 Hz.")
+
     # Parse arguments
     args = parser.parse_args()
-    
-    # Convert all MP3 files in the directory and subdirectories
-    convert_directory_mp3_to_wav(args.root_dir, args.sample_rate)
+
+    # Process the input (either file or directory)
+    process_input(args.input_path, args.sample_rate)
