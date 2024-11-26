@@ -56,6 +56,20 @@ def get_audio_api(id, save_path):
     except Exception as e:
         return f"Error downloading ID {id}: {e}"
 
+def get_xml_api(id, save_path):
+    url = f'https://api.ganjoor.net/api/audio/file/{id}.xml'
+    save_path = os.path.join(save_path, f"{id}.xml")
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            return f"Downloaded {id}.xml"
+        else:
+            return f"Error: Unable to fetch audio for ID {id}. Status code: {response.status_code}"
+    except Exception as e:
+        return f"Error downloading ID {id}: {e}"
+
 def get_text_api(id):
     url = f'https://api.ganjoor.net/api/ganjoor/poem/{id}'
     response = requests.get(url)
