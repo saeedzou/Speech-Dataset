@@ -70,44 +70,51 @@ def get_audio_api(id, save_path):
 def get_xml_api(id, save_path):
     url = f'https://api.ganjoor.net/api/audio/file/{id}.xml'
     save_path = os.path.join(save_path, f"{id}.json")
+    audio_path = os.path.join(save_path, f"{id}.mp3")  # Assume audio file is saved in the same folder
+
     try:
         response = requests.get(url)
         if response.status_code == 200:
-              # Parse the XML data
-            tree = ET.parse(response.content)
-            root = tree.getroot()  # Get the root element of the XML
+            # Parse the XML data
+            root = ET.fromstring(response.content)  # Use fromstring for raw XML content
             data = {"offsets": {"begin": None, "end": None}, "verses": {}}
             sync_info_list = []
 
+            # Collect all sync info data
             for sync_info in root.findall(".//SyncInfo"):
                 verse_order = int(sync_info.find("VerseOrder").text)
                 audio_milliseconds = int(sync_info.find("AudioMiliseconds").text)
                 sync_info_list.append((verse_order, audio_milliseconds))
 
-                for i, (verse_order, audio_milliseconds) in enumerate(sync_info_list):
-                    if verse_order == -1:
-                        data["offsets"]["begin"] = audio_milliseconds
-                    elif verse_order == -2:
-                        data["offsets"]["end"] = audio_milliseconds
-                    else:
-                        # Handle verses with next_audio_milliseconds
-                        next_audio_milliseconds = (
-                            sync_info_list[i + 1][1] if i + 1 < len(sync_info_list) else None
-                        )
-                        if next_audio_milliseconds is None:
-                            audio_file_path = save_path.replace(".json", ".mp3")
-                            total_audio_duration = get_audio_duration(audio_file_path)
-                            next_audio_milliseconds = total_audio_duration
-                        data["verses"][verse_order] = {
-                            "begin": audio_milliseconds,
-                            "end": next_audio_milliseconds,
-                        }
+            # Process each entry in sync_info_list
+            for i, (verse_order, audio_milliseconds) in enumerate(sync_info_list):
+                if verse_order == -1:
+                    data["offsets"]["begin"] = audio_milliseconds
+                elif verse_order == -2:
+                    data["offsets"]["end"] = audio_milliseconds
+                else:
+                    # Handle verses with next_audio_milliseconds
+                    next_audio_milliseconds = (
+                        sync_info_list[i + 1][1] if i + 1 < len(sync_info_list) else None
+                    )
+                    if next_audio_milliseconds is None:
+                        # Get total audio duration if next_audio_milliseconds is missing
+                        total_audio_duration = get_audio_duration(audio_path)
+                        next_audio_milliseconds = total_audio_duration
 
+                    data["verses"][verse_order] = {
+                        "begin": audio_milliseconds,
+                        "end": next_audio_milliseconds,
+                    }
+
+            # Write JSON data to file
             with open(save_path, "w", encoding="utf-8") as json_file:
                 json.dump(data, json_file, ensure_ascii=False, indent=4)
             return f"Downloaded {id}.json"
         else:
-            return f"Error: Unable to fetch audio for ID {id}. Status code: {response.status_code}"
+            return f"Error: Unable to fetch XML for ID {id}. Status code: {response.status_code}"
+    except ET.ParseError:
+        return f"Error: Failed to parse XML content for ID {id}."
     except Exception as e:
         return f"Error downloading ID {id}: {e}"
 
