@@ -70,7 +70,7 @@ def get_audio_api(id, save_path):
 def get_xml_api(id, save_path):
     url = f'https://api.ganjoor.net/api/audio/file/{id}.xml'
     save_path = os.path.join(save_path, f"{id}.json")
-    audio_path = os.path.join(save_path, f"{id}.mp3")  # Assume audio file is saved in the same folder
+    audio_path = save_path.split(".json")[0] + ".mp3" # Assume audio file is saved in the same folder
 
     try:
         response = requests.get(url)
@@ -234,6 +234,32 @@ def extract_audios_from_ids(ids, save_directory, max_workers=50):
                 print(result)  # Log the result of each download
             except Exception as e:
                 print(f"Error processing ID {id}: {e}")
+
+def extract_jsons_from_ids(ids, save_directory, max_workers=50):
+    """
+    Downloads json files for a list of IDs and saves them to a specified directory.
+    
+    Args:
+        ids (List[str]): List of IDs for the audio files to download.
+        save_directory (str): Directory to save the json files.
+        max_workers (int): Maximum number of threads for concurrent downloads.
+    """
+    # Ensure the save directory exists
+    os.makedirs(save_directory, exist_ok=True)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_id = {executor.submit(get_xml_api, id, save_directory): id for id in ids}
+
+        # Display progress with tqdm
+        for future in tqdm(as_completed(future_to_id), total=len(ids), desc="Downloading Json Files", unit="file"):
+            id = future_to_id[future]
+            try:
+                result = future.result()
+                print(result)  # Log the result of each download
+            except Exception as e:
+                print(f"Error processing ID {id}: {e}")
+
+
 def extract_audio_metadata(file_path: str) -> dict:
     try:
         audio = MP3(file_path)
