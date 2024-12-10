@@ -3,9 +3,7 @@ import csv
 import json
 import os
 from bs4 import BeautifulSoup
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 from mutagen.mp3 import MP3
 from pydub.utils import mediainfo
 import xml.etree.ElementTree as ET
@@ -231,7 +229,8 @@ def extract_audios_from_ids(ids, save_directory, max_workers=50):
             id = future_to_id[future]
             try:
                 result = future.result()
-                print(result)  # Log the result of each download
+                if "Error" in result:
+                    print(result)
             except Exception as e:
                 print(f"Error processing ID {id}: {e}")
 
