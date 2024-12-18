@@ -1,0 +1,5 @@
+nltk
+eng_to_ipa
+parsivar
+tqdm
+pydub
