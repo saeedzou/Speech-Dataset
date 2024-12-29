@@ -43,4 +43,11 @@ def upload_file_to_drive(drive, parent_folder_id, file_path, file_name):
     gfile.SetContentFile(file_path)
     gfile.Upload()
     print(f"Uploaded {file_name} to folder ID {parent_folder_id}.")
-    return gfile['id']
+
+    gfile.InsertPermission({
+        'type': 'anyone',
+        'value': 'anyone',
+        'role': 'reader'
+    })
+    public_id = gfile['id']
+    return public_id
